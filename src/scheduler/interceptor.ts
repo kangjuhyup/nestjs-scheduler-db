@@ -3,35 +3,61 @@ import {
   CallHandler,
   ExecutionContext,
   NestInterceptor,
+  Inject,
+  OnModuleInit,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { catchError, tap } from 'rxjs/operators';
 import { Reflector } from '@nestjs/core';
-import { CRON_STEP, CRON_WITH_DB } from './decorator';
+import { CRON_JOB_NAME, CRON_STEP, CRON_WITH_DB } from './decorator';
+import {
+  IBATCH_REPOSITORY,
+  IBatchRepository,
+} from 'src/database/repository/batch.repository';
 
 @Injectable()
 export class BatchInterceptor implements NestInterceptor {
-  constructor(private readonly reflector: Reflector) {}
+  constructor(
+    private readonly reflector: Reflector,
+    @Inject(IBATCH_REPOSITORY)
+    private readonly batchRepository: IBatchRepository,
+  ) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  async intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Promise<Observable<any>> {
     const target = context.getHandler();
+    const jobName = this.reflector.get<string>(CRON_JOB_NAME, target);
     const cronWithDB = this.reflector.get<boolean>(CRON_WITH_DB, target);
     const cronStep = this.reflector.get<boolean>(CRON_STEP, target);
-    if (!cronWithDB) {
-      return next.handle();
-    }
 
-    //TODO: 배치 시작 상태 저장
-    const startTime = Date.now();
+    if (cronWithDB && jobName) {
+      const startTime = Date.now();
 
-    if (cronStep) {
-      //TODO : 배치 실행 스탭 저장
+      const job = await this.batchRepository.selectJob(jobName);
+      // Job 이 없을 경우 생성
+      if (!job) await this.batchRepository.addJob();
+
+      if (!cronStep) await this.batchRepository.startExecution();
+      else await this.batchRepository.startStep();
     }
 
     return next.handle().pipe(
       tap(async () => {
-        //TODO: 배치 종료 상태 저장
-        const endTime = Date.now();
+        if (cronWithDB) {
+          const endTime = Date.now();
+          if (!cronStep) await this.batchRepository.completeExecution();
+          else await this.batchRepository.completeStep();
+        }
+      }),
+      catchError(async (err) => {
+        if (cronWithDB) {
+          const endTime = Date.now();
+          if (!cronStep) await this.batchRepository.failExecution();
+          else await this.batchRepository.failStep();
+        }
+        return err;
       }),
     );
   }
