@@ -28,15 +28,14 @@ export class BatchInterceptor implements NestInterceptor {
     next: CallHandler,
   ): Promise<Observable<any>> {
     const target = context.getHandler();
-    const jobName = this.reflector.get<string>(CRON_JOB_NAME, target);
+    const jobName =
+      this.reflector.get<string>(CRON_JOB_NAME, target) || target.name;
     const cronWithDB = this.reflector.get<boolean>(CRON_WITH_DB, target);
     const cronStep = this.reflector.get<boolean>(CRON_STEP, target);
 
     let executionId: number;
 
     if (cronWithDB && jobName) {
-      const startTime = Date.now();
-
       const job = await this.batchRepository.selectJob(jobName);
       // Job 이 없을 경우 생성
       if (!job || job.length === 0) {
@@ -72,14 +71,14 @@ export class BatchInterceptor implements NestInterceptor {
     }
 
     return next.handle().pipe(
-      // 배치 시작
+      // 배치 or 스탭 완료
       tap(async () => {
         if (cronWithDB) {
           if (!cronStep && executionId)
             await this.batchRepository.startExecution(executionId);
         }
       }),
-      // 배치 완료
+      // 배치 or 스탭 완료
       tap(async () => {
         if (cronWithDB) {
           const endTime = Date.now();

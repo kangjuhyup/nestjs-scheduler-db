@@ -9,8 +9,7 @@ export const CRON_STEP = 'CRON_STEP';
  * @description Cron 데코레이터 확장
  * @param cronTime
  */
-export function CronWithDB(param: { jobName: string; cronTime: string }) {
-  if (!param.jobName) throw new Error('배치 Job 이름이 없습니다.');
+export function CronWithDB(param: { jobName?: string; cronTime: string }) {
   if (!param.cronTime) throw new Error('크론 시간 표현식이 없습니다.');
   return applyDecorators(
     Cron(param.cronTime),
