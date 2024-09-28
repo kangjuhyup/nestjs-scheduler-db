@@ -61,6 +61,37 @@ import { SchedulerDBModule } from '@jhkang/nestjs-scheduler-db'
 })
 export class AppModule {}
 ```
+```typescript
+import { CronWithDB } from '@jhkang/nestjs-scheduler-db'
+@Injectable()
+export class ExampleScheduler {
+  constructor (
+    private readonly service : ExampleService
+  )
+
+  @CronWithDB(cronTime : '0 0 * * *')
+  myScheduler() {
+    const resultA = this.service.activeA();
+    const resultB = this.service.activeB(resultA);
+  }
+}
+```
+```typescript
+import { CronStep } from '@jhkang/nestjs-scheduler-db'
+@Injectable() 
+export class ExampleService {
+
+  @CronStep()
+  activeA() {
+    return 1;
+  }
+
+  @CronStep()
+  activeB(num:number) {
+    return num * 2;
+  }
+}
+```
 
 ## License
 [MIT licensed](LICENSE).
