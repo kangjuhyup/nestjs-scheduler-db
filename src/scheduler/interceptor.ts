@@ -32,30 +32,68 @@ export class BatchInterceptor implements NestInterceptor {
     const cronWithDB = this.reflector.get<boolean>(CRON_WITH_DB, target);
     const cronStep = this.reflector.get<boolean>(CRON_STEP, target);
 
+    let executionId: number;
+
     if (cronWithDB && jobName) {
       const startTime = Date.now();
 
       const job = await this.batchRepository.selectJob(jobName);
       // Job 이 없을 경우 생성
-      if (!job) await this.batchRepository.addJob();
+      if (!job || job.length === 0) {
+        // jobkey 가 같은게 없을 경우 version 을 올려서 생성한다.
 
-      if (!cronStep) await this.batchRepository.startExecution();
-      else await this.batchRepository.startStep();
+        const existedJob = await this.batchRepository.selectJobFromKey(
+          jobName,
+          context.getArgs(),
+        );
+        if (!existedJob) {
+          const jobInstance = this.batchRepository.createJob(
+            jobName,
+            context.getArgs(),
+          );
+          jobInstance.VERSION = job.length + 1;
+          await this.batchRepository.addJob(jobInstance);
+        }
+      }
+
+      if (!cronStep) {
+        const job = await this.batchRepository.selectJobFromKey(
+          jobName,
+          context.getArgs(),
+        );
+        const jobExecution = this.batchRepository.createExecution(
+          job.JOB_INSTANCE_ID,
+        );
+        //TODO : execution parameter 에 따라 execution version 도 올라가야된다.
+        await this.batchRepository.startingExecution(jobExecution);
+      } else {
+        await this.batchRepository.startStep();
+      }
     }
 
     return next.handle().pipe(
+      // 배치 시작
+      tap(async () => {
+        if (cronWithDB) {
+          if (!cronStep && executionId)
+            await this.batchRepository.startExecution(executionId);
+        }
+      }),
+      // 배치 완료
       tap(async () => {
         if (cronWithDB) {
           const endTime = Date.now();
-          if (!cronStep) await this.batchRepository.completeExecution();
-          else await this.batchRepository.completeStep();
+          if (!cronStep && executionId)
+            await this.batchRepository.completeExecution(executionId);
+          if (cronStep) await this.batchRepository.completeStep();
         }
       }),
       catchError(async (err) => {
         if (cronWithDB) {
           const endTime = Date.now();
-          if (!cronStep) await this.batchRepository.failExecution();
-          else await this.batchRepository.failStep();
+          if (!cronStep && executionId)
+            await this.batchRepository.failExecution(executionId);
+          if (cronStep) await this.batchRepository.failStep();
         }
         return err;
       }),

@@ -44,7 +44,23 @@ $ yarn run test:cov
 ```
 
 ## Usage
+```typescript
+import { SchedulerDBModule } from '@jhkang/nestjs-scheduler-db'
 
+@Module({
+  imports : [
+    SchedulerDBModule.forRoot({
+      database : {
+
+      }, 
+      scheduler : {
+
+      }
+    })
+  ]
+})
+export class AppModule {}
+```
 
 ## License
 [MIT licensed](LICENSE).
